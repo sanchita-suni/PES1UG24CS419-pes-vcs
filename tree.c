@@ -122,7 +122,26 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 static int build_tree_level(const IndexEntry *entries, int count,
                             const char *prefix, size_t prefix_len,
                             ObjectID *id_out) {
-    (void)entries; (void)count; (void)prefix; (void)prefix_len; (void)id_out;
+    Tree tree;
+    tree.count = 0;
+
+    int i = 0;
+    while (i < count) {
+        const char *rel = entries[i].path + prefix_len;
+        const char *slash = strchr(rel, '/');
+
+        if (!slash) {
+            TreeEntry *te = &tree.entries[tree.count++];
+            te->mode = entries[i].mode;
+            te->hash = entries[i].hash;
+            snprintf(te->name, sizeof(te->name), "%s", rel);
+            i++;
+            continue;
+        }
+        i++;
+    }
+
+    (void)prefix; (void)id_out;
     return -1;
 }
 
