@@ -235,6 +235,22 @@ int index_add(Index *index, const char *path) {
     }
     free(buf);
 
-    (void)index;
-    return 0;
+    uint32_t mode = (st.st_mode & S_IXUSR) ? 0100755 : 0100644;
+
+    IndexEntry *existing = index_find(index, path);
+    IndexEntry *entry;
+    if (existing) {
+        entry = existing;
+    } else {
+        if (index->count >= MAX_INDEX_ENTRIES) return -1;
+        entry = &index->entries[index->count++];
+    }
+
+    entry->mode = mode;
+    entry->hash = blob_id;
+    entry->mtime_sec = (uint64_t)st.st_mtime;
+    entry->size = (uint32_t)st.st_size;
+    snprintf(entry->path, sizeof(entry->path), "%s", path);
+
+    return index_save(index);
 }
