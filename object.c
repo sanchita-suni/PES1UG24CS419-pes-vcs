@@ -125,6 +125,34 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
     snprintf(shard_dir, sizeof(shard_dir), "%s/%.2s", OBJECTS_DIR, hex);
     mkdir(shard_dir, 0755);
 
+    char final_path[1024];
+    snprintf(final_path, sizeof(final_path), "%s/%s", shard_dir, hex + 2);
+
+    char tmp_path[1100];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", final_path);
+
+    int fd = open(tmp_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd < 0) { free(full); return -1; }
+
+    ssize_t written = 0;
+    while ((size_t)written < full_len) {
+        ssize_t n = write(fd, full + written, full_len - written);
+        if (n < 0) { close(fd); unlink(tmp_path); free(full); return -1; }
+        written += n;
+    }
+
+    fsync(fd);
+    close(fd);
+
+    if (rename(tmp_path, final_path) != 0) {
+        unlink(tmp_path);
+        free(full);
+        return -1;
+    }
+
+    int dfd = open(shard_dir, O_RDONLY);
+    if (dfd >= 0) { fsync(dfd); close(dfd); }
+
     free(full);
     return 0;
 }
