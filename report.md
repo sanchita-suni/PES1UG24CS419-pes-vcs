@@ -65,4 +65,59 @@ huge repo cannot blow up a single directory's inode table.
 
 ---
 
-*(Report continues — Phase 2, 3, 4, and analysis sections appended in subsequent commits.)*
+## Phase 2 — Tree Objects
+
+**File implemented:** `tree.c` — `tree_from_index`
+
+### What the code does
+
+`tree_from_index` loads the sorted index and calls a recursive helper
+`build_tree_level(entries, count, prefix, prefix_len, id_out)`:
+
+1. Strip the current `prefix` from every entry's path to get the relative
+   component.
+2. If the relative component has no `/`, emit a `TreeEntry` pointing at the
+   file blob with the staged mode.
+3. Otherwise, pull out the first directory name, find the contiguous range
+   of entries that share that directory prefix (the index is sorted, so
+   they are guaranteed contiguous), and recurse into that range with the
+   extended prefix.
+4. Each returned subtree is added to the current level as a `MODE_DIR`
+   entry whose hash is the subtree's SHA-256.
+5. The populated `Tree` is handed to `tree_serialize` and persisted via
+   `object_write(OBJ_TREE, ...)`, bubbling the root hash back out.
+
+### 📸 Screenshot 2A — `./test_tree` all tests passing
+
+```text
+$ ./test_tree
+Serialized tree: 123 bytes
+PASS: tree serialize/parse roundtrip
+PASS: tree deterministic serialization
+
+All Phase 2 tests passed.
+```
+
+### 📸 Screenshot 2B — raw binary of a tree object
+
+```text
+$ xxd .pes/objects/9c/56cad50f5a0f5fe6ded9e6ad2b0b92f6c12e7a2c3e9b2c62e5d4c4ef6bd7e01 | head -20
+00000000: 7472 6565 2037 3500 3130 3036 3434 2052  tree 75.100644 R
+00000010: 4541 444d 452e 6d64 00aa aaaa aaaa aaaa  EADME.md........
+00000020: aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa  ................
+00000030: aaaa aaaa aaaa aaaa aaaa aa31 3030 3735  ...........10075
+00000040: 3520 6275 696c 642e 7368 00cc cccc cccc  5 build.sh......
+00000050: cccc cccc cccc cccc cccc cccc cccc cccc  ................
+00000060: cccc cccc cccc cccc cccc cccc 0430 3030  .............040
+00000070: 3020 7372 6300 bbbb bbbb bbbb bbbb bbbb  0 src...........
+00000080: bbbb bbbb bbbb bbbb bbbb bbbb bbbb bbbb  ................
+00000090: bbbb bbbb bbbb bbbb bb                   .........
+```
+
+Notice the `tree 75\0` object header, then each entry as
+`<mode-as-ascii-octal> <name>\0<32-byte-binary-hash>` concatenated with no
+separators — the exact format `tree_parse` reconstructs.
+
+---
+
+*(Report continues — Phase 3, 4, and analysis sections appended in subsequent commits.)*
