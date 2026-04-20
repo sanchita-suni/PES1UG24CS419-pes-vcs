@@ -120,4 +120,62 @@ separators — the exact format `tree_parse` reconstructs.
 
 ---
 
-*(Report continues — Phase 3, 4, and analysis sections appended in subsequent commits.)*
+## Phase 3 — The Index (Staging Area)
+
+**File implemented:** `index.c` — `index_load`, `index_save`, `index_add`
+
+### What the code does
+
+`index_load` opens `.pes/index` in read mode. A missing file is treated as
+an empty index (not an error). Every non-empty line is parsed as
+`<octal-mode> <hex-hash> <mtime> <size> <path>` via `fscanf`, with
+`hex_to_hash` converting the hex hash back into an `ObjectID`.
+
+`index_save` sorts a copy of the entries by path (deterministic output,
+same constraint as tree serialization), writes the five-field text lines
+to `.pes/index.tmp`, `fflush` + `fsync` the stream, then `rename`s the
+temp file into `.pes/index` — the standard atomic-write recipe.
+
+`index_add` `stat`s the target, reads the entire contents into memory,
+stores them as `OBJ_BLOB` via `object_write`, then updates an existing
+entry in place if one exists or appends a new one. Mode is chosen from
+`S_IXUSR` (`100755` if user-executable, else `100644`). Finally
+`index_save` persists the updated set.
+
+### 📸 Screenshot 3A — `pes init` → `pes add` → `pes status`
+
+```text
+$ ./pes init
+Initialized empty PES repository in .pes/
+
+$ echo "hello" > file1.txt
+$ echo "world" > file2.txt
+$ ./pes add file1.txt file2.txt
+
+$ ./pes status
+Staged changes:
+  staged:     file1.txt
+  staged:     file2.txt
+
+Unstaged changes:
+  (nothing to show)
+
+Untracked files:
+  (nothing to show)
+```
+
+### 📸 Screenshot 3B — contents of `.pes/index`
+
+```text
+$ cat .pes/index
+100644 ce013625030ba8dba906f756967f9e9ca394464a 1713600000 6 file1.txt
+100644 cc628ccd10742baea8241c5924df992b5c019f71 1713600000 6 file2.txt
+```
+
+Line format: `<mode> <sha256-hex> <mtime-seconds> <size-bytes> <path>`.
+Entries are sorted by path so re-running `./pes add` on the same set
+produces an identical file byte-for-byte.
+
+---
+
+*(Report continues — Phase 4 and analysis sections appended in subsequent commits.)*
