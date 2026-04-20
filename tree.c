@@ -117,6 +117,15 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
     return 0;
 }
 
+// Recursively build a tree object for entries under `prefix` (e.g. "src/").
+// `prefix_len` is the length of that prefix within each entry's path.
+static int build_tree_level(const IndexEntry *entries, int count,
+                            const char *prefix, size_t prefix_len,
+                            ObjectID *id_out) {
+    (void)entries; (void)count; (void)prefix; (void)prefix_len; (void)id_out;
+    return -1;
+}
+
 // ─── TODO: Implement these ──────────────────────────────────────────────────
 
 // Build a tree hierarchy from the current index and write all tree
