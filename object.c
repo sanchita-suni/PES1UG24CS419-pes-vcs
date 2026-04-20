@@ -199,6 +199,13 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
     }
     fclose(f);
 
+    ObjectID computed;
+    compute_hash(buf, (size_t)file_size, &computed);
+    if (memcmp(computed.hash, id->hash, HASH_SIZE) != 0) {
+        free(buf);
+        return -1;
+    }
+
     uint8_t *null_byte = memchr(buf, '\0', (size_t)file_size);
     if (!null_byte) { free(buf); return -1; }
 
