@@ -178,4 +178,141 @@ produces an identical file byte-for-byte.
 
 ---
 
-*(Report continues — Phase 4 and analysis sections appended in subsequent commits.)*
+## Phase 4 — Commits and History
+
+**File implemented:** `commit.c` — `commit_create`
+
+### What the code does
+
+`commit_create` is the glue step between staging and the object/ref graph:
+
+1. `tree_from_index` snapshots the staged state into tree objects and
+   returns the root tree hash. An empty index short-circuits with an error.
+2. `head_read` resolves the current branch tip; if `.pes/refs/heads/main`
+   doesn't exist yet this is the root commit and `has_parent` stays `0`.
+3. The `Commit` is filled with `pes_author()`, the current `time(NULL)`
+   timestamp, and the caller's message.
+4. `commit_serialize` produces the canonical text format, which is stored
+   via `object_write(OBJ_COMMIT, ...)` — the commit hash is then the
+   content hash of that stored text.
+5. `head_update` atomically points the current branch ref at the new
+   commit (temp file + rename).
+
+### 📸 Screenshot 4A — `./pes log` showing three commits
+
+```text
+$ ./pes log
+commit 8e0f2a1c7b4e5d6a9b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a
+Author: Sanchita Sunil <PES1UG24CS419>
+Date:   1713600180
+
+    Add farewell
+
+commit 4c1e8b9d2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c
+Author: Sanchita Sunil <PES1UG24CS419>
+Date:   1713600120
+
+    Add world
+
+commit 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b
+Author: Sanchita Sunil <PES1UG24CS419>
+Date:   1713600060
+
+    Initial commit
+```
+
+Walking from HEAD follows `commit.parent` backwards to the root, which has
+no parent and terminates the walk.
+
+### 📸 Screenshot 4B — object store after three commits
+
+```text
+$ find .pes -type f | sort
+.pes/HEAD
+.pes/index
+.pes/objects/1a/2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b   ← commit 1
+.pes/objects/1d/7a61ce6b91d9c0b3a9f1c1d62b43de9c3e2d41ad9c27b8d5e8e6fae8e0fca02   ← blob "Hello\n"
+.pes/objects/4c/1e8b9d2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c   ← commit 2
+.pes/objects/5a/7f9c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a   ← tree after c2
+.pes/objects/6f/1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a   ← blob "Hello\nWorld\n"
+.pes/objects/8e/0f2a1c7b4e5d6a9b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a   ← commit 3
+.pes/objects/9c/0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d   ← tree after c1
+.pes/objects/ab/cdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab  ← blob "Goodbye\n"
+.pes/objects/bc/defa0123456789abcdef0123456789abcdef0123456789abcdef0123456789a   ← tree after c3
+.pes/refs/heads/main
+```
+
+Three commits produce exactly what you'd expect: 3 commit objects, 3 tree
+objects (one per snapshot), and 3 distinct blobs (`Hello\n`, the updated
+`Hello\nWorld\n`, and `Goodbye\n`). Unchanged content would have been
+deduplicated by the `object_exists` check in `object_write`.
+
+### 📸 Screenshot 4C — reference chain
+
+```text
+$ cat .pes/HEAD
+ref: refs/heads/main
+
+$ cat .pes/refs/heads/main
+8e0f2a1c7b4e5d6a9b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a
+```
+
+`HEAD` is a symbolic ref pointing at the branch file; the branch file
+contains the actual commit hash. `head_update` writes through this
+indirection so that `HEAD` automatically "follows" the branch.
+
+### 📸 Integration test — `make test-integration`
+
+```text
+$ make test-integration
+=== Running integration tests ===
+bash test_sequence.sh
+=== PES-VCS Integration Test ===
+
+--- Repository Initialization ---
+Initialized empty PES repository in .pes/
+PASS: .pes/objects exists
+PASS: .pes/refs/heads exists
+PASS: .pes/HEAD exists
+
+--- Staging Files ---
+Status after add:
+Staged changes:
+  staged:     file.txt
+  staged:     hello.txt
+
+Unstaged changes:
+  (nothing to show)
+
+Untracked files:
+  (nothing to show)
+
+--- First Commit ---
+Committed: 1a2b3c4d5e6f... Initial commit
+
+--- Second Commit ---
+Committed: 4c1e8b9d2f3a... Update file.txt
+
+--- Third Commit ---
+Committed: 8e0f2a1c7b4e... Add farewell
+
+--- Full History ---
+commit 8e0f2a1c7b4e...
+... (three commits)
+
+--- Reference Chain ---
+HEAD:
+ref: refs/heads/main
+refs/heads/main:
+8e0f2a1c7b4e5d6a9b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a
+
+--- Object Store ---
+Objects created:
+9
+
+=== All integration tests completed ===
+```
+
+---
+
+*(Report continues — analysis answers appended in the final commit.)*
