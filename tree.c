@@ -138,7 +138,36 @@ static int build_tree_level(const IndexEntry *entries, int count,
             i++;
             continue;
         }
-        i++;
+
+        size_t dir_len = slash - rel;
+        char dir_name[256];
+        if (dir_len >= sizeof(dir_name)) return -1;
+        memcpy(dir_name, rel, dir_len);
+        dir_name[dir_len] = '\0';
+
+        char child_prefix[512];
+        int cp_len = snprintf(child_prefix, sizeof(child_prefix), "%.*s%s/",
+                              (int)prefix_len, entries[i].path, dir_name);
+        if (cp_len < 0 || (size_t)cp_len >= sizeof(child_prefix)) return -1;
+
+        int j = i;
+        while (j < count &&
+               strncmp(entries[j].path, child_prefix, (size_t)cp_len) == 0) {
+            j++;
+        }
+
+        ObjectID sub_id;
+        if (build_tree_level(entries + i, j - i,
+                             child_prefix, (size_t)cp_len, &sub_id) != 0) {
+            return -1;
+        }
+
+        TreeEntry *te = &tree.entries[tree.count++];
+        te->mode = MODE_DIR;
+        te->hash = sub_id;
+        snprintf(te->name, sizeof(te->name), "%s", dir_name);
+
+        i = j;
     }
 
     (void)prefix; (void)id_out;
