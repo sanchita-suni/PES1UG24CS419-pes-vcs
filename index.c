@@ -188,7 +188,14 @@ int index_save(const Index *index) {
                 e->mode, hex, e->mtime_sec, e->size, e->path);
     }
 
+    fflush(f);
+    fsync(fileno(f));
     fclose(f);
+
+    if (rename(tmp_path, INDEX_FILE) != 0) {
+        unlink(tmp_path);
+        return -1;
+    }
     return 0;
 }
 
